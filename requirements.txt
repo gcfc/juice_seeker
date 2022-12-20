@@ -1,0 +1,7 @@
+mailjet_rest
+python-dotenv
+selenium
+beautifulsoup4
+requests
+numpy
+scipy

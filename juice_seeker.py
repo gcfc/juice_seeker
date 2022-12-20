@@ -1,21 +1,27 @@
-import os
-import time
-from selenium import webdriver
-from selenium.webdriver import ActionChains
-from selenium.webdriver.support import expected_conditions as ec
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
+from dotenv import load_dotenv
+from mailjet_rest import Client
 from bs4 import BeautifulSoup
-import requests
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import *
+from selenium.webdriver.support import expected_conditions as ec
+from selenium.webdriver import ActionChains
+from selenium import webdriver
+import os
+import json
 import numpy as np
 import scipy.interpolate as si
+import pprint
+pp = pprint.PrettyPrinter(indent=2)
+
+load_dotenv()
 
 REFRESH_TIME = 0.5  # sec
 
 print("Getting browser...")
-# options = webdriver.ChromeOptions() #options. ...
-driver = webdriver.Chrome()
+options = webdriver.ChromeOptions()
+# TODO: make it headless (and other options)
+driver = webdriver.Chrome(options=options)
 
 print("Opening website...")
 # Opening the website
@@ -24,10 +30,11 @@ driver.get("https://sky.shellrecharge.com/evowner/account/sign-in")
 while not driver.find_elements(value="mat-input-1"):
   continue
 
+print("Entering info...")
 email_txtbx = driver.find_element(value="mat-input-0")
-email_txtbx.send_keys("***********@gmail.com")
+email_txtbx.send_keys(os.environ['GREENSHELL_USERNAME'])
 pw_txtbx = driver.find_element(value="mat-input-1")
-pw_txtbx.send_keys("***************")
+pw_txtbx.send_keys(os.environ['GREENSHELL_PASSWORD'])
 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
 # find iframe
@@ -53,15 +60,26 @@ captcha_box = WebDriverWait(driver, 2).until(
 driver.execute_script("arguments[0].click()", captcha_box)
 print('I am not a robot I swear!')
 
+# Error Handing for captcha
+captcha_ok = False
 audio_button_found = False
-while not driver.find_elements(by=By.CLASS_NAME, value="recaptcha-checkbox-checkmark"):
-  if audio_button_found:
-    pass # TODO
-  continue
+driver.switch_to.frame(captcha_iframe)
+while not captcha_ok:
+  holder = driver.find_element(by=By.CLASS_NAME, value='rc-anchor-checkbox-holder')
+  span = holder.find_element(by=By.TAG_NAME, value='span')
+  # audio_button = driver.find_elements(by=By.CLASS_NAME, value='rc-button-audio')
+  # audio_button2 = driver.find_elements(by=By.ID, value="recaptcha-audio-button")
+  # print(audio_button, audio_button2)
+  # audio_button_found = bool(len(audio_button))
+  if "recaptcha-checkbox-checked" in span.get_attribute("class"):
+    captcha_ok = True
+    print("Got u good lmao")
+  elif audio_button_found:
+    print("Audio button found")
+    # TODO
 
-print("Tricked you there lol")
-
-# finding the button using ID
+# finding the login button
+driver.switch_to.default_content()
 login = driver.find_element(by=By.CLASS_NAME, value="green_btn_lg.customize-primary-bg.mat-button")
 
 # clicking on the button
@@ -71,6 +89,7 @@ print("Logging in...")
 while driver.find_elements(value="mat-input-1"):
   continue
 print("Login successful, getting stations...")
+
 
 def get_availabilities(driver):
   output_dict = dict()
@@ -111,47 +130,71 @@ while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
 
 front_availabilities = get_availabilities(driver)
 
-print(back_availabilities)
-print(front_availabilities)
-
 driver.close()
 
+pp.pprint(back_availabilities)
+pp.pprint(front_availabilities)
+back_total = sum(len(v) for v in back_availabilities.values())
+back_num_available = sum(vv == 'Available' for v in back_availabilities.values()
+                         for vv in v.values())
+front_total = sum(len(v) for v in front_availabilities.values())
+front_num_available = sum(vv == 'Available' for v in front_availabilities.values()
+                          for vv in v.values())
+
+# Send email
+api_key = os.environ['API_KEY']
+api_secret = os.environ['API_SECRET']
+email_segments = []
+email_segments.append(f"Front: {front_total}/{front_num_available}")
+email_segments.extend([f"{k}\t{v}" for k, v in front_availabilities.items()])
+email_segments.append(f"Back: {back_total}/{back_num_available}")
+email_segments.extend([f"{k}\t{v}" for k, v in back_availabilities.items()])
+email_text = "\n".join(email_segments)
+print(email_text)
+
+mailjet = Client(auth=(api_key, api_secret), version='v3.1')
+data = {
+    'Messages': [
+        {
+            "From": {
+                "Email": os.environ['MY_EMAIL'],
+                "Name": "George"
+            },
+            "To": [
+                {
+                    "Email": os.environ['MY_EMAIL'],
+                    "Name": "George"
+                }
+            ],
+            "Subject": "EV Charger Availabilities",
+            "TextPart": f"{email_text}"
+        }
+    ]
+}
+result = mailjet.send.create(data=data)
+print("Sent status:", result.status_code)
+print("Sent API Response:", json.dumps(result.json(), indent=2))
 
 # ============================================================================
-# # Curve base:
-# points = [[0, 0], [0, 2], [2, 3], [4, 0], [6, 3], [8, 2], [8, 0]]
-# points = np.array(points)
-
-# x = points[:,0]
-# y = points[:,1]
-
-
-# t = range(len(points))
-# ipl_t = np.linspace(0.0, len(points) - 1, 100)
-
-# x_tup = si.splrep(t, x, k=3)
-# y_tup = si.splrep(t, y, k=3)
-
-# x_list = list(x_tup)
-# xl = x.tolist()
-# x_list[1] = xl + [0.0, 0.0, 0.0, 0.0]
-
-# y_list = list(y_tup)
-# yl = y.tolist()
-# y_list[1] = yl + [0.0, 0.0, 0.0, 0.0]
-
-# x_i = si.splev(ipl_t, x_list) # x interpolate values
-# y_i = si.splev(ipl_t, y_list) # y interpolate values
-
-
-# audioBtnFound = False
-# audioBtnIndex = -1
-# filename = '1.mp3'
-# allIframesLen = driver.find_elements(by=By.TAG_NAME, value='iframe')
+# from selenium import webdriver
+# from selenium.webdriver.common.keys import Keys
+# from webdriver_manager.chrome import ChromeDriverManager
+# from selenium.webdriver.common.by import By
+# from http_request_randomizer.requests.proxy.requestProxy
+# import RequestProxy
+# import os, sys
+# import time,requests
+# from bs4 import BeautifulSoup
 # delayTime = 2
 # audioToTextDelay = 10
-# googleIBMLink = 'https://speech-to-text-demo-nlu.mybluemix.net/'
-
+# filename = '1.mp3'
+# byPassUrl = 'https://www.google.com/recaptcha/api2/demo'
+# googleIBMLink = 'https://speech-to-text-demo.ng.bluemix.net/'
+# option = webdriver.ChromeOptions()
+# option.add_argument('--disable-notifications')
+# option.add_argument("--mute-audio")
+# # option.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
+# option.add_argument("user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 10_3 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) CriOS/56.0.2924.75 Mobile/14E5239e Safari/602.1")
 # def audioToText(mp3Path):
 #     print("1")
 #     driver.execute_script('''window.open("","_blank");''')
@@ -164,9 +207,9 @@ driver.close()
 #     print("3")
 #     # Upload file
 #     time.sleep(1)
-#     root = driver.find_elements(by=By.ID, value='root').find_elements(by=By.CLASS_NAME, value='dropzone _container _container_large')
+#     root = driver.find_element_by_id('root').find_elements_by_class_name('dropzone _container _container_large')
 #     btn = driver.find_element(By.XPATH, '//*[@id="root"]/div/input')
-#     btn.send_keys('1.mp3')
+#     btn.send_keys('C:/Users/AbdulBasit/Documents/google-captcha-bypass/1.mp3')
 #     # Audio to text is processing
 #     time.sleep(delayTime)
 #     #btn.send_keys(path)
@@ -174,7 +217,7 @@ driver.close()
 #     # Audio to text is processing
 #     time.sleep(audioToTextDelay)
 #     print("5")
-#     text = driver.find_element(By.XPATH, '//*[@id="root"]/div/div[7]/div/div/div').find_elements(by=By.TAG_NAME, value='span')
+#     text = driver.find_element(By.XPATH, '//*[@id="root"]/div/div[7]/div/div/div').find_elements_by_tag_name('span')
 #     print("5.1")
 #     result = " ".join( [ each.text for each in text ] )
 #     print("6")
@@ -186,38 +229,55 @@ driver.close()
 #     with open(filename, "wb") as handle:
 #         for data in content.iter_content():
 #             handle.write(data)
-
-
-# try:
-#     audioBtn = driver.find_elements(by=By.ID, value='recaptcha-audio-button') or driver.find_elements(by=By.ID, value='recaptcha-anchor')
-#     audioBtn.click()
-#     audioBtnFound = True
-#     break
-# except Exception as e:
-#     pass
-
+# driver = webdriver.Chrome(ChromeDriverManager().install(), options=option)
+# driver.get(byPassUrl)
+# time.sleep(1)
+# googleClass = driver.find_elements_by_class_name('g-recaptcha')[0]
+# time.sleep(2)
+# outeriframe = googleClass.find_element_by_tag_name('iframe')
+# time.sleep(1)
+# outeriframe.click()
+# time.sleep(2)
+# allIframesLen = driver.find_elements_by_tag_name('iframe')
+# time.sleep(1)
+# audioBtnFound = False
+# audioBtnIndex = -1
+# for index in range(len(allIframesLen)):
+#     driver.switch_to.default_content()
+#     iframe = driver.find_elements_by_tag_name('iframe')[index]
+#     driver.switch_to.frame(iframe)
+#     driver.implicitly_wait(delayTime)
+#     try:
+#         audioBtn = driver.find_element_by_id('recaptcha-audio-button') or driver.find_element_by_id('recaptcha-anchor')
+#         audioBtn.click()
+#         audioBtnFound = True
+#         audioBtnIndex = index
+#         break
+#     except Exception as e:
+#         pass
 # if audioBtnFound:
 #     try:
 #         while True:
-#             href = driver.find_elements(by=By.ID, value='audio-source').get_attribute('src')
+#             href = driver.find_element_by_id('audio-source').get_attribute('src')
 #             response = requests.get(href, stream=True)
 #             saveFile(response,filename)
 #             response = audioToText(os.getcwd() + '/' + filename)
+#             print(response)
 #             driver.switch_to.default_content()
-#             iframe = driver.find_elements(by=By.TAG_NAME, value='iframe')[audioBtnIndex] # it is not an iframe anymore....
+#             iframe = driver.find_elements_by_tag_name('iframe')[audioBtnIndex]
 #             driver.switch_to.frame(iframe)
-#             inputbtn = driver.find_elements(by=By.ID, value='audio-response')
+#             inputbtn = driver.find_element_by_id('audio-response')
 #             inputbtn.send_keys(response)
 #             inputbtn.send_keys(Keys.ENTER)
 #             time.sleep(2)
-#             errorMsg = driver.find_elements(by=By.CLASS_NAME, value='rc-audiochallenge-error-message')[0]
+#             errorMsg = driver.find_elements_by_class_name('rc-audiochallenge-error-message')[0]
 #             if errorMsg.text == "" or errorMsg.value_of_css_property('display') == 'none':
 #                 print("Success")
 #                 break
 #     except Exception as e:
-#             print(e)
-#             print('Caught. Need to change proxy now')
-#     else:
-#         print('Button not found. This should not happen.')
+#         print(e)
+#         print('Caught. Need to change proxy now')
+# else:
+#     print('Button not found. This should not happen.')
 
 # ============================================================================
