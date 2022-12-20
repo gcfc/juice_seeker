@@ -16,82 +16,85 @@ pp = pprint.PrettyPrinter(indent=2)
 
 load_dotenv()
 
-REFRESH_TIME = 0.5  # sec
 
-print("Getting browser...")
-options = webdriver.ChromeOptions()
-# TODO: make it headless (and other options)
-driver = webdriver.Chrome(options=options)
+def setup():
+  print("Getting browser...")
+  options = webdriver.ChromeOptions()
+  # TODO: make it headless (and other options)
+  driver = webdriver.Chrome(options=options)
 
-print("Opening website...")
-# Opening the website
-driver.get("https://sky.shellrecharge.com/evowner/account/sign-in")
+  print("Opening website...")
+  # Opening the website
+  driver.get("https://sky.shellrecharge.com/evowner/account/sign-in")
 
-while not driver.find_elements(value="mat-input-1"):
-  continue
+  while not driver.find_elements(value="mat-input-1"):
+    continue
 
-print("Entering info...")
-email_txtbx = driver.find_element(value="mat-input-0")
-email_txtbx.send_keys(os.environ['GREENSHELL_USERNAME'])
-pw_txtbx = driver.find_element(value="mat-input-1")
-pw_txtbx.send_keys(os.environ['GREENSHELL_PASSWORD'])
-driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+  print("Entering info...")
+  email_txtbx = driver.find_element(value="mat-input-0")
+  email_txtbx.send_keys(os.environ['GREENSHELL_USERNAME'])
+  pw_txtbx = driver.find_element(value="mat-input-1")
+  pw_txtbx.send_keys(os.environ['GREENSHELL_PASSWORD'])
+  driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
-# find iframe
-captcha_iframe = WebDriverWait(driver, 2).until(
-    ec.presence_of_element_located(
-        (
-            By.TAG_NAME, 'iframe'
-        )
-    )
-)
+  # find iframe
+  captcha_iframe = WebDriverWait(driver, 2).until(
+      ec.presence_of_element_located(
+          (
+              By.TAG_NAME, 'iframe'
+          )
+      )
+  )
 
-ActionChains(driver).move_to_element(captcha_iframe).click().perform()
+  ActionChains(driver).move_to_element(captcha_iframe).click().perform()
 
-# click im not robot
-captcha_box = WebDriverWait(driver, 2).until(
-    ec.presence_of_element_located(
-        (
-            By.ID, 'g-recaptcha-response'
-        )
-    )
-)
+  # click im not robot
+  captcha_box = WebDriverWait(driver, 2).until(
+      ec.presence_of_element_located(
+          (
+              By.ID, 'g-recaptcha-response'
+          )
+      )
+  )
 
-driver.execute_script("arguments[0].click()", captcha_box)
-print('I am not a robot I swear!')
+  driver.execute_script("arguments[0].click()", captcha_box)
+  print('I am not a robot I swear!')
 
-# Error Handing for captcha
-captcha_ok = False
-audio_button_found = False
-driver.switch_to.frame(captcha_iframe)
-while not captcha_ok:
-  holder = driver.find_element(by=By.CLASS_NAME, value='rc-anchor-checkbox-holder')
-  span = holder.find_element(by=By.TAG_NAME, value='span')
-  # audio_button = driver.find_elements(by=By.CLASS_NAME, value='rc-button-audio')
-  # audio_button2 = driver.find_elements(by=By.ID, value="recaptcha-audio-button")
-  # print(audio_button, audio_button2)
-  # audio_button_found = bool(len(audio_button))
-  if "recaptcha-checkbox-checked" in span.get_attribute("class"):
-    captcha_ok = True
-    print("Got u good lmao")
-  elif audio_button_found:
-    print("Audio button found")
-    # TODO
+  # Error Handing for captcha
+  captcha_ok = False
+  audio_button_found = False
+  driver.switch_to.frame(captcha_iframe)
+  while not captcha_ok:
+    holder = driver.find_element(by=By.CLASS_NAME, value='rc-anchor-checkbox-holder')
+    span = holder.find_element(by=By.TAG_NAME, value='span')
+    # audio_button = driver.find_elements(by=By.CLASS_NAME, value='rc-button-audio')
+    # audio_button2 = driver.find_elements(by=By.ID, value="recaptcha-audio-button")
+    # print(audio_button, audio_button2)
+    # audio_button_found = bool(len(audio_button))
+    if "recaptcha-checkbox-checked" in span.get_attribute("class"):
+      captcha_ok = True
+      print("Got u good lmao")
+    elif audio_button_found:
+      print("Audio button found")
+      # TODO
 
-# finding the login button
-driver.switch_to.default_content()
-login = driver.find_element(by=By.CLASS_NAME, value="green_btn_lg.customize-primary-bg.mat-button")
+  # finding the login button
+  driver.switch_to.default_content()
+  login = driver.find_element(
+      by=By.CLASS_NAME, value="green_btn_lg.customize-primary-bg.mat-button")
 
-# clicking on the button
-login.click()
+  # clicking on the button
+  login.click()
 
-print("Logging in...")
-while driver.find_elements(value="mat-input-1"):
-  continue
-print("Login successful, getting stations...")
+  print("Logging in...")
+  while driver.find_elements(value="mat-input-1"):
+    continue
+  print("Logged in!")
+
+  return driver
 
 
-def get_availabilities(driver):
+def read_station(driver):
   output_dict = dict()
   html = BeautifulSoup(driver.page_source, features="lxml")
   for card in html.body.find_all('mat-card', attrs={"class": "notify_list"}):
@@ -108,72 +111,98 @@ def get_availabilities(driver):
   return output_dict
 
 
-driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
-while not any([el.text == "521407_4100 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
-  continue
-back_spots = [el for el in driver.find_elements(
-    by=By.TAG_NAME, value="a") if el.text == "521407_4100 Bayside"][0]
-back_spots.click()
-while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
-  continue
+def get_front_and_back(driver):
+  print("Getting stations...")
+  driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
+  while not any([el.text == "521407_4100 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
+    continue
+  back_spots = [el for el in driver.find_elements(
+      by=By.TAG_NAME, value="a") if el.text == "521407_4100 Bayside"][0]
+  back_spots.click()
+  while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
+    continue
 
-back_availabilities = get_availabilities(driver)
+  back_availabilities = read_station(driver)
+  print(f"Looked at the back")
+  pp.pprint(back_availabilities)
 
-driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
-while not any([el.text == "521412_4000 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
-  continue
-back_spots = [el for el in driver.find_elements(
-    by=By.TAG_NAME, value="a") if el.text == "521412_4000 Bayside"][0]
-back_spots.click()
-while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
-  continue
+  driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
+  while not any([el.text == "521412_4000 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
+    continue
+  back_spots = [el for el in driver.find_elements(
+      by=By.TAG_NAME, value="a") if el.text == "521412_4000 Bayside"][0]
+  back_spots.click()
+  while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
+    continue
 
-front_availabilities = get_availabilities(driver)
+  front_availabilities = read_station(driver)
+  print(f"Looked at the front")
+  pp.pprint(front_availabilities)
 
-driver.close()
+  return front_availabilities, back_availabilities
 
-pp.pprint(back_availabilities)
-pp.pprint(front_availabilities)
-back_total = sum(len(v) for v in back_availabilities.values())
-back_num_available = sum(vv == 'Available' for v in back_availabilities.values()
-                         for vv in v.values())
-front_total = sum(len(v) for v in front_availabilities.values())
-front_num_available = sum(vv == 'Available' for v in front_availabilities.values()
-                          for vv in v.values())
 
-# Send email
-api_key = os.environ['API_KEY']
-api_secret = os.environ['API_SECRET']
-email_segments = []
-email_segments.append(f"Front: {front_total}/{front_num_available}")
-email_segments.extend([f"{k}\t{v}" for k, v in front_availabilities.items()])
-email_segments.append(f"Back: {back_total}/{back_num_available}")
-email_segments.extend([f"{k}\t{v}" for k, v in back_availabilities.items()])
-email_text = "\n".join(email_segments)
-print(email_text)
+def send_email():
+  api_key = os.environ['API_KEY']
+  api_secret = os.environ['API_SECRET']
+  email_segments = []
+  email_segments.append(f"Front: {front_num_available}/{front_total}")
+  email_segments.extend([f"{k}\t{v}" for k, v in front_availabilities.items()])
+  email_segments.append(f"\nBack: {back_num_available}/{back_total}")
+  email_segments.extend([f"{k}\t{v}" for k, v in back_availabilities.items()])
+  email_text = "\n".join(email_segments)
+  print(email_text)
 
-mailjet = Client(auth=(api_key, api_secret), version='v3.1')
-data = {
-    'Messages': [
-        {
-            "From": {
-                "Email": os.environ['MY_EMAIL'],
-                "Name": "George"
-            },
-            "To": [
-                {
-                    "Email": os.environ['MY_EMAIL'],
-                    "Name": "George"
-                }
-            ],
-            "Subject": "EV Charger Availabilities",
-            "TextPart": f"{email_text}"
-        }
-    ]
-}
-result = mailjet.send.create(data=data)
-print("Sent status:", result.status_code)
-print("Sent API Response:", json.dumps(result.json(), indent=2))
+  mailjet = Client(auth=(api_key, api_secret), version='v3.1')
+  data = {
+      'Messages': [
+          {
+              "From": {
+                  "Email": os.environ['MY_EMAIL'],
+                  "Name": "George"
+              },
+              "To": [
+                  {
+                      "Email": os.environ['MY_EMAIL'],
+                      "Name": "George"
+                  }
+              ],
+              "Subject": "EV Charger Availabilities",
+              "TextPart": f"{email_text}"
+          }
+      ]
+  }
+  result = mailjet.send.create(data=data)
+  if result.status_code == 200:
+    print("Email sent successfully!")
+
+  print("Sent API Response:", json.dumps(result.json(), indent=2))
+
+
+if __name__ == '__main__':
+  driver = setup()
+  while True:
+    try:
+      front_availabilities, back_availabilities = get_front_and_back(driver)
+      front_availabilities.pop(52447)
+      back_total = sum(len(v) for v in back_availabilities.values())
+      back_num_available = sum(vv == 'Available' for v in back_availabilities.values()
+                               for vv in v.values())
+      front_total = sum(len(v) for v in front_availabilities.values())
+      front_num_available = sum(vv == 'Available' for v in front_availabilities.values()
+                                for vv in v.values())
+
+      if (back_num_available > 0) or (front_num_available > 0):
+        send_email()
+        break
+
+    except KeyboardInterrupt:
+      print("Interrupted! Exiting...")
+      break
+
+  driver.close()
+  print("Have a wonderful day!")
+
 
 # ============================================================================
 # from selenium import webdriver
