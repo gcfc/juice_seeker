@@ -7,14 +7,15 @@ from selenium.common.exceptions import *
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver import ActionChains
 from selenium import webdriver
+from utils import *
 import os
 import json
-import numpy as np
-import scipy.interpolate as si
 import pprint
 pp = pprint.PrettyPrinter(indent=2)
 
 load_dotenv()
+
+DEBUG_MODE = True
 
 
 def setup():
@@ -62,24 +63,39 @@ def setup():
 
   # Error Handing for captcha
   captcha_ok = False
-  audio_button_found = False
-  driver.switch_to.frame(captcha_iframe)
+  audio_sent = False
+
   while not captcha_ok:
+    driver.switch_to.frame(captcha_iframe)
     holder = driver.find_element(by=By.CLASS_NAME, value='rc-anchor-checkbox-holder')
     span = holder.find_element(by=By.TAG_NAME, value='span')
-    # audio_button = driver.find_elements(by=By.CLASS_NAME, value='rc-button-audio')
-    # audio_button2 = driver.find_elements(by=By.ID, value="recaptcha-audio-button")
-    # print(audio_button, audio_button2)
-    # audio_button_found = bool(len(audio_button))
+
     if "recaptcha-checkbox-checked" in span.get_attribute("class"):
       captcha_ok = True
       print("Got u good lmao")
-    elif audio_button_found:
-      print("Audio button found")
-      # TODO
+    elif not audio_sent:
+      driver.switch_to.default_content()
+      iframe = driver.find_element(
+          by=By.XPATH, value="//iframe[@title='recaptcha challenge expires in two minutes']")
+      driver.switch_to.frame(iframe)
+      audio_button_list = driver.find_elements(by=By.ID, value='recaptcha-audio-button')
+      if audio_button_list:
+        print("Audio button found")
+        audio_button = audio_button_list[0]
+        audio_button.click()
+        while not driver.find_elements(by=By.CLASS_NAME, value="rc-audiochallenge-tdownload-link"):
+          continue
+        audio_link_div = driver.find_element(
+            by=By.XPATH, value="//a[@class='rc-audiochallenge-tdownload-link']")
+        audio_link = audio_link_div.get_attribute('href')
+        audio = get_challenge_audio(audio_link)
+        audio_output = speech_to_text(audio)
+        driver.find_element(by=By.ID, value='audio-response').send_keys(audio_output)
+        driver.find_element(by=By.ID, value='recaptcha-verify-button').click()
+        audio_sent = True
+    driver.switch_to.default_content()
 
   # finding the login button
-  driver.switch_to.default_content()
   login = driver.find_element(
       by=By.CLASS_NAME, value="green_btn_lg.customize-primary-bg.mat-button")
 
@@ -112,7 +128,7 @@ def read_station(driver):
 
 
 def get_front_and_back(driver):
-  print("Getting stations...")
+  print("Checking stations...")
   driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
   while not any([el.text == "521407_4100 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
     continue
@@ -123,8 +139,9 @@ def get_front_and_back(driver):
     continue
 
   back_availabilities = read_station(driver)
-  print(f"Looked at the back")
-  pp.pprint(back_availabilities)
+  if DEBUG_MODE:
+    print(f"Looked at the back")
+    pp.pprint(back_availabilities)
 
   driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
   while not any([el.text == "521412_4000 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
@@ -136,8 +153,9 @@ def get_front_and_back(driver):
     continue
 
   front_availabilities = read_station(driver)
-  print(f"Looked at the front")
-  pp.pprint(front_availabilities)
+  if DEBUG_MODE:
+    print(f"Looked at the front")
+    pp.pprint(front_availabilities)
 
   return front_availabilities, back_availabilities
 
@@ -184,7 +202,7 @@ if __name__ == '__main__':
   while True:
     try:
       front_availabilities, back_availabilities = get_front_and_back(driver)
-      front_availabilities.pop(52447)
+      front_availabilities.pop(52447)  # This station doesn't work
       back_total = sum(len(v) for v in back_availabilities.values())
       back_num_available = sum(vv == 'Available' for v in back_availabilities.values()
                                for vv in v.values())
@@ -192,7 +210,7 @@ if __name__ == '__main__':
       front_num_available = sum(vv == 'Available' for v in front_availabilities.values()
                                 for vv in v.values())
 
-      if (back_num_available > 0) or (front_num_available > 0):
+      if ((back_num_available > 0) or (front_num_available > 0)) and not DEBUG_MODE:
         send_email()
         break
 
@@ -202,111 +220,3 @@ if __name__ == '__main__':
 
   driver.close()
   print("Have a wonderful day!")
-
-
-# ============================================================================
-# from selenium import webdriver
-# from selenium.webdriver.common.keys import Keys
-# from webdriver_manager.chrome import ChromeDriverManager
-# from selenium.webdriver.common.by import By
-# from http_request_randomizer.requests.proxy.requestProxy
-# import RequestProxy
-# import os, sys
-# import time,requests
-# from bs4 import BeautifulSoup
-# delayTime = 2
-# audioToTextDelay = 10
-# filename = '1.mp3'
-# byPassUrl = 'https://www.google.com/recaptcha/api2/demo'
-# googleIBMLink = 'https://speech-to-text-demo.ng.bluemix.net/'
-# option = webdriver.ChromeOptions()
-# option.add_argument('--disable-notifications')
-# option.add_argument("--mute-audio")
-# # option.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-# option.add_argument("user-agent=Mozilla/5.0 (iPhone; CPU iPhone OS 10_3 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) CriOS/56.0.2924.75 Mobile/14E5239e Safari/602.1")
-# def audioToText(mp3Path):
-#     print("1")
-#     driver.execute_script('''window.open("","_blank");''')
-#     driver.switch_to.window(driver.window_handles[1])
-#     print("2")
-#     driver.get(googleIBMLink)
-#     delayTime = 10
-#     # Upload file
-#     time.sleep(1)
-#     print("3")
-#     # Upload file
-#     time.sleep(1)
-#     root = driver.find_element_by_id('root').find_elements_by_class_name('dropzone _container _container_large')
-#     btn = driver.find_element(By.XPATH, '//*[@id="root"]/div/input')
-#     btn.send_keys('C:/Users/AbdulBasit/Documents/google-captcha-bypass/1.mp3')
-#     # Audio to text is processing
-#     time.sleep(delayTime)
-#     #btn.send_keys(path)
-#     print("4")
-#     # Audio to text is processing
-#     time.sleep(audioToTextDelay)
-#     print("5")
-#     text = driver.find_element(By.XPATH, '//*[@id="root"]/div/div[7]/div/div/div').find_elements_by_tag_name('span')
-#     print("5.1")
-#     result = " ".join( [ each.text for each in text ] )
-#     print("6")
-#     driver.close()
-#     driver.switch_to.window(driver.window_handles[0])
-#     print("7")
-#     return result
-# def saveFile(content,filename):
-#     with open(filename, "wb") as handle:
-#         for data in content.iter_content():
-#             handle.write(data)
-# driver = webdriver.Chrome(ChromeDriverManager().install(), options=option)
-# driver.get(byPassUrl)
-# time.sleep(1)
-# googleClass = driver.find_elements_by_class_name('g-recaptcha')[0]
-# time.sleep(2)
-# outeriframe = googleClass.find_element_by_tag_name('iframe')
-# time.sleep(1)
-# outeriframe.click()
-# time.sleep(2)
-# allIframesLen = driver.find_elements_by_tag_name('iframe')
-# time.sleep(1)
-# audioBtnFound = False
-# audioBtnIndex = -1
-# for index in range(len(allIframesLen)):
-#     driver.switch_to.default_content()
-#     iframe = driver.find_elements_by_tag_name('iframe')[index]
-#     driver.switch_to.frame(iframe)
-#     driver.implicitly_wait(delayTime)
-#     try:
-#         audioBtn = driver.find_element_by_id('recaptcha-audio-button') or driver.find_element_by_id('recaptcha-anchor')
-#         audioBtn.click()
-#         audioBtnFound = True
-#         audioBtnIndex = index
-#         break
-#     except Exception as e:
-#         pass
-# if audioBtnFound:
-#     try:
-#         while True:
-#             href = driver.find_element_by_id('audio-source').get_attribute('src')
-#             response = requests.get(href, stream=True)
-#             saveFile(response,filename)
-#             response = audioToText(os.getcwd() + '/' + filename)
-#             print(response)
-#             driver.switch_to.default_content()
-#             iframe = driver.find_elements_by_tag_name('iframe')[audioBtnIndex]
-#             driver.switch_to.frame(iframe)
-#             inputbtn = driver.find_element_by_id('audio-response')
-#             inputbtn.send_keys(response)
-#             inputbtn.send_keys(Keys.ENTER)
-#             time.sleep(2)
-#             errorMsg = driver.find_elements_by_class_name('rc-audiochallenge-error-message')[0]
-#             if errorMsg.text == "" or errorMsg.value_of_css_property('display') == 'none':
-#                 print("Success")
-#                 break
-#     except Exception as e:
-#         print(e)
-#         print('Caught. Need to change proxy now')
-# else:
-#     print('Button not found. This should not happen.')
-
-# ============================================================================
