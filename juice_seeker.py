@@ -1,37 +1,54 @@
-from dotenv import load_dotenv
-from mailjet_rest import Client
-from bs4 import BeautifulSoup
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.common.by import By
-from selenium.common.exceptions import *
-from selenium.webdriver.support import expected_conditions as ec
-from selenium.webdriver import ActionChains
-from selenium import webdriver
-from utils import *
-import os
-import json
 import pprint
+import logging
+import json
+import os
+from utils import *
+from selenium import webdriver
+from selenium.webdriver import ActionChains
+from selenium.webdriver.support import expected_conditions as ec
+from selenium.common.exceptions import *
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from bs4 import BeautifulSoup
+from mailjet_rest import Client
+from dotenv import load_dotenv
+load_dotenv()
 pp = pprint.PrettyPrinter(indent=2)
 
-load_dotenv()
+DEBUG_MODE = False
 
-DEBUG_MODE = True
+LOGGING_SUPERINFO_LEVEL = logging.INFO + 5
+logging.addLevelName(LOGGING_SUPERINFO_LEVEL, "SUPERINFO")
+def superinfo(self, message, *args, **kws):
+    if self.isEnabledFor(LOGGING_SUPERINFO_LEVEL):
+        self._log(LOGGING_SUPERINFO_LEVEL, message, args, **kws) 
+logging.Logger.superinfo = superinfo
+LOGGING_FORMAT = '[%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s'
 
+if DEBUG_MODE:
+  logging.basicConfig(format=LOGGING_FORMAT, level=logging.INFO)
+else:
+  logging.basicConfig(format=LOGGING_FORMAT, level=LOGGING_SUPERINFO_LEVEL)
+
+logger = logging.getLogger()
 
 def setup():
-  print("Getting browser...")
-  options = webdriver.ChromeOptions()
-  # TODO: make it headless (and other options)
-  driver = webdriver.Chrome(options=options)
-
-  print("Opening website...")
-  # Opening the website
+  logger.superinfo("Getting browser...")
+  driver = webdriver.Chrome()
+  
+  # Limitation: must run with browser window open on the same screen (not necessarily selected)
+  # TODO: enable headless mode: 
+  # options = webdriver.ChromeOptions()
+  # options.headless = True
+  # driver = webdriver.Chrome(options=options)
+  
+  logger.superinfo("Opening website...")
   driver.get("https://sky.shellrecharge.com/evowner/account/sign-in")
 
   while not driver.find_elements(value="mat-input-1"):
     continue
 
-  print("Entering info...")
+  logger.superinfo("Entering info...")
   email_txtbx = driver.find_element(value="mat-input-0")
   email_txtbx.send_keys(os.environ['GREENSHELL_USERNAME'])
   pw_txtbx = driver.find_element(value="mat-input-1")
@@ -49,7 +66,6 @@ def setup():
 
   ActionChains(driver).move_to_element(captcha_iframe).click().perform()
 
-  # click im not robot
   captcha_box = WebDriverWait(driver, 2).until(
       ec.presence_of_element_located(
           (
@@ -59,9 +75,9 @@ def setup():
   )
 
   driver.execute_script("arguments[0].click()", captcha_box)
-  print('I am not a robot I swear!')
+  logger.superinfo('I am not a robot I swear!')
 
-  # Error Handing for captcha
+  # Do the (likely) audio challenge for captcha
   captcha_ok = False
   audio_sent = False
 
@@ -72,7 +88,7 @@ def setup():
 
     if "recaptcha-checkbox-checked" in span.get_attribute("class"):
       captcha_ok = True
-      print("Got u good lmao")
+      logger.superinfo("Got u good lmao")
     elif not audio_sent:
       driver.switch_to.default_content()
       iframe = driver.find_element(
@@ -80,9 +96,8 @@ def setup():
       driver.switch_to.frame(iframe)
       audio_button_list = driver.find_elements(by=By.ID, value='recaptcha-audio-button')
       if audio_button_list:
-        print("Audio button found")
-        audio_button = audio_button_list[0]
-        audio_button.click()
+        logger.superinfo("Audio button found")
+        driver.execute_script("arguments[0].click()", audio_button_list[0])
         while not driver.find_elements(by=By.CLASS_NAME, value="rc-audiochallenge-tdownload-link"):
           continue
         audio_link_div = driver.find_element(
@@ -102,10 +117,10 @@ def setup():
   # clicking on the button
   login.click()
 
-  print("Logging in...")
+  logger.superinfo("Logging in...")
   while driver.find_elements(value="mat-input-1"):
     continue
-  print("Logged in!")
+  logger.superinfo("Logged in!")
 
   return driver
 
@@ -128,7 +143,7 @@ def read_station(driver):
 
 
 def get_front_and_back(driver):
-  print("Checking stations...")
+  logger.superinfo("Checking stations...")
   driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
   while not any([el.text == "521407_4100 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
     continue
@@ -139,9 +154,8 @@ def get_front_and_back(driver):
     continue
 
   back_availabilities = read_station(driver)
-  if DEBUG_MODE:
-    print(f"Looked at the back")
-    pp.pprint(back_availabilities)
+  logger.info(f"Looked at the back")
+  logger.info(json.dumps(back_availabilities, indent=2))
 
   driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
   while not any([el.text == "521412_4000 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
@@ -153,9 +167,8 @@ def get_front_and_back(driver):
     continue
 
   front_availabilities = read_station(driver)
-  if DEBUG_MODE:
-    print(f"Looked at the front")
-    pp.pprint(front_availabilities)
+  logger.info(f"Looked at the front")
+  logger.info(json.dumps(front_availabilities, indent=2))
 
   return front_availabilities, back_availabilities
 
@@ -169,7 +182,7 @@ def send_email():
   email_segments.append(f"\nBack: {back_num_available}/{back_total}")
   email_segments.extend([f"{k}\t{v}" for k, v in back_availabilities.items()])
   email_text = "\n".join(email_segments)
-  print(email_text)
+  logger.superinfo(email_text)
 
   mailjet = Client(auth=(api_key, api_secret), version='v3.1')
   data = {
@@ -192,9 +205,9 @@ def send_email():
   }
   result = mailjet.send.create(data=data)
   if result.status_code == 200:
-    print("Email sent successfully!")
+    logger.superinfo("Email sent successfully!")
 
-  print("Sent API Response:", json.dumps(result.json(), indent=2))
+  logger.info(f"Sent API Response: {json.dumps(result.json(), indent=2)}")
 
 
 if __name__ == '__main__':
@@ -215,8 +228,8 @@ if __name__ == '__main__':
         break
 
     except KeyboardInterrupt:
-      print("Interrupted! Exiting...")
+      logger.error("Interrupted! Exiting...")
       break
 
   driver.close()
-  print("Have a wonderful day!")
+  logger.superinfo("Have a wonderful day!")

@@ -3,11 +3,13 @@ from pydub import AudioSegment
 import speech_recognition as sr
 import requests
 import os
+import logging
 
+logger = logging.getLogger()
 
 # Adopted from https://github.com/eastee/rebreakcaptcha with modifications and bug fixes.
 def get_challenge_audio(url):
-  print("Audio URL:", url)
+  logger.info(f"Audio URL: {url}")
   # Download the challenge audio and store in memory
   request = requests.get(url)
   audio_file = io.BytesIO(request.content)
@@ -31,16 +33,16 @@ def speech_to_text(audio_source):
   # recognize speech using Google Speech Recognition
   try:
     audio_output = recognizer.recognize_google(audio)
-    print("Google:", audio_output)
+    logger.info(f"Google: {audio_output}")
     # Check if we got harder audio captcha
     if any(character.isalpha() for character in audio_output):
       # Use Houndify to detect the harder audio captcha
       audio_output, confidence = recognizer.recognize_houndify(
           audio, client_id=os.environ['HOUNDIFY_CLIENT_ID'], client_key=os.environ['HOUNDIFY_CLIENT_KEY'])
-      print("Houndify: " + audio_output)
+      logger.info(f"Houndify: {audio_output}")
   except sr.UnknownValueError:
-    print("Google Speech Recognition could not understand audio")
+    logger.error("Google Speech Recognition could not understand audio")
   except sr.RequestError as e:
-    print("Could not request results from Google Speech Recognition service; {0}".format(e))
+    logger.error(f"Could not request results from Google Speech Recognition service; {e}")
 
   return audio_output
