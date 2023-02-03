@@ -17,11 +17,17 @@ pp = pprint.PrettyPrinter(indent=2)
 
 DEBUG_MODE = False
 
+# These stations and ports don't work
+EXCLUDE_FRONT = [(52447, 2), (52957, 1), (52958, 1)]
+EXCLUDE_BACK = [(52547, 1), (52547, 2)]
+
 LOGGING_SUPERINFO_LEVEL = logging.INFO + 5
 logging.addLevelName(LOGGING_SUPERINFO_LEVEL, "SUPERINFO")
+
 def superinfo(self, message, *args, **kws):
-    if self.isEnabledFor(LOGGING_SUPERINFO_LEVEL):
-        self._log(LOGGING_SUPERINFO_LEVEL, message, args, **kws) 
+  if self.isEnabledFor(LOGGING_SUPERINFO_LEVEL):
+    self._log(LOGGING_SUPERINFO_LEVEL, message, args, **kws)
+
 logging.Logger.superinfo = superinfo
 LOGGING_FORMAT = '[%(levelname).1s%(asctime)s %(filename)s:%(lineno)d] %(message)s'
 
@@ -35,13 +41,13 @@ logger = logging.getLogger()
 def setup():
   logger.superinfo("Getting browser...")
   driver = webdriver.Chrome()
-  
-  # Limitation: must run with browser window open on the same screen (not necessarily selected)
-  # TODO: enable headless mode: 
+
+  # Limitation: during login, must have browser window open on the same screen (not necessarily selected)
+  # TODO: enable headless mode:
   # options = webdriver.ChromeOptions()
   # options.headless = True
   # driver = webdriver.Chrome(options=options)
-  
+
   logger.superinfo("Opening website...")
   driver.get("https://sky.shellrecharge.com/evowner/account/sign-in")
 
@@ -138,7 +144,7 @@ def read_station(driver):
       charger_num = int(charger.find('div', attrs={"class": "number_charge"}).span.text)
       charger_avail = charger.find(
           'div', attrs={"class": "available_info"}).span.text.lstrip('(').rstrip(')')
-      output_dict[station_id][charger_num] = charger_avail
+      output_dict[int(station_id)][int(charger_num)] = charger_avail
   return output_dict
 
 
@@ -170,6 +176,21 @@ def get_front_and_back(driver):
   logger.info(f"Looked at the front")
   logger.info(json.dumps(front_availabilities, indent=2))
 
+  return front_availabilities, back_availabilities
+
+
+def handle_excludes(front_availabilities, back_availabilities):
+  # Yeet the ones that are reserved / don't work
+  for exc_station, port in EXCLUDE_FRONT:
+    front_availabilities[exc_station].pop(port)
+  for exc_station, port in EXCLUDE_BACK:
+    back_availabilities[exc_station].pop(port)
+  to_delete_front = [station for station, port in front_availabilities.items() if port == dict()]
+  to_delete_back = [station for station, port in back_availabilities.items() if port == dict()]
+  for station in to_delete_front:
+    front_availabilities.pop(station)
+  for station in to_delete_back:
+    back_availabilities.pop(station)
   return front_availabilities, back_availabilities
 
 
@@ -215,7 +236,8 @@ if __name__ == '__main__':
   while True:
     try:
       front_availabilities, back_availabilities = get_front_and_back(driver)
-      front_availabilities.pop(52447)  # This station doesn't work
+      front_availabilities, back_availabilities = handle_excludes(
+          front_availabilities, back_availabilities)
       back_total = sum(len(v) for v in back_availabilities.values())
       back_num_available = sum(vv == 'Available' for v in back_availabilities.values()
                                for vv in v.values())
