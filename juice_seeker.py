@@ -19,7 +19,7 @@ DEBUG_MODE = False
 
 # These stations and ports don't work
 EXCLUDE_FRONT = [(52447, 2), (52957, 1), (52958, 1)]
-EXCLUDE_BACK = [(52547, 1), (52547, 2)]
+EXCLUDE_BACK = []
 
 LOGGING_SUPERINFO_LEVEL = logging.INFO + 5
 logging.addLevelName(LOGGING_SUPERINFO_LEVEL, "SUPERINFO")
@@ -224,12 +224,11 @@ def send_email():
           }
       ]
   }
-  result = mailjet.send.create(data=data)
-  if result.status_code == 200:
-    logger.superinfo("Email sent successfully!")
-
-  logger.info(f"Sent API Response: {json.dumps(result.json(), indent=2)}")
-
+  if not DEBUG_MODE:
+    result = mailjet.send.create(data=data)
+    logger.superinfo(f"Sent API Response: {json.dumps(result.json(), indent=2)}")
+    if result.status_code == 200:
+      logger.superinfo("Email sent successfully!")
 
 if __name__ == '__main__':
   driver = setup()
@@ -245,7 +244,7 @@ if __name__ == '__main__':
       front_num_available = sum(vv == 'Available' for v in front_availabilities.values()
                                 for vv in v.values())
 
-      if ((back_num_available > 0) or (front_num_available > 0)) and not DEBUG_MODE:
+      if ((back_num_available > 0) or (front_num_available > 0)):
         send_email()
         break
 
