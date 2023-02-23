@@ -2,6 +2,8 @@ import pprint
 import logging
 import json
 import os
+import pickle
+from pathlib import Path
 from utils import *
 from selenium import webdriver
 from selenium.webdriver import ActionChains
@@ -9,13 +11,15 @@ from selenium.webdriver.support import expected_conditions as ec
 from selenium.common.exceptions import *
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
 from mailjet_rest import Client
 from dotenv import load_dotenv
 load_dotenv()
 pp = pprint.PrettyPrinter(indent=2)
 
-DEBUG_MODE = False
+COOKIES_PATH = Path(__file__).parent.absolute().joinpath('cookies.pkl')
+DEBUG_MODE = True
 
 # These stations and ports don't work
 EXCLUDE_FRONT = [(52447, 2), (52957, 1), (52958, 1)]
@@ -40,9 +44,15 @@ logger = logging.getLogger()
 
 def setup():
   logger.superinfo("Getting browser...")
-  driver = webdriver.Chrome()
+  options = Options()
+  # options.add_argument("--user-data-dir=selenium")
+  # options.add_argument("--remote-debugging-port=9222")
+  # options.add_argument('--no-sandbox')
+  driver = webdriver.Chrome(options=options)
+  return driver
 
-  # Limitation: during login, must have browser window open on the same screen (not necessarily selected)
+def login(driver):
+  # Limitation: during first time login, must have browser window open on the same screen (not necessarily selected)
   # TODO: enable headless mode:
   # options = webdriver.ChromeOptions()
   # options.headless = True
@@ -59,6 +69,8 @@ def setup():
   email_txtbx.send_keys(os.environ['GREENSHELL_USERNAME'])
   pw_txtbx = driver.find_element(value="mat-input-1")
   pw_txtbx.send_keys(os.environ['GREENSHELL_PASSWORD'])
+  remember_me = driver.find_element(value="mat-checkbox-1")
+  remember_me.click()
   driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
   # find iframe
@@ -127,7 +139,8 @@ def setup():
   while driver.find_elements(value="mat-input-1"):
     continue
   logger.superinfo("Logged in!")
-
+  pickle.dump(driver.get_cookies(), open(COOKIES_PATH, "wb"))
+  logger.superinfo("Cookies created!")
   return driver
 
 
@@ -148,9 +161,12 @@ def read_station(driver):
   return output_dict
 
 
-def get_front_and_back(driver):
+def get_front_and_back(driver, cookies=None):
   logger.superinfo("Checking stations...")
   driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
+  if cookies is not None:
+    for cookie in cookies:
+      driver.add_cookie(cookie)
   while not any([el.text == "521407_4100 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
     continue
   back_spots = [el for el in driver.find_elements(
@@ -164,6 +180,9 @@ def get_front_and_back(driver):
   logger.info(json.dumps(back_availabilities, indent=2))
 
   driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
+  if cookies is not None:
+    for cookie in cookies:
+      driver.add_cookie(cookie)
   while not any([el.text == "521412_4000 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
     continue
   back_spots = [el for el in driver.find_elements(
@@ -231,7 +250,14 @@ def send_email():
       logger.superinfo("Email sent successfully!")
 
 if __name__ == '__main__':
+  has_cookies = os.path.isfile(COOKIES_PATH)
+  print(has_cookies)
   driver = setup()
+  if not has_cookies:
+    driver = login(driver)
+    cookies = None
+  else:
+    cookies = pickle.load(open(COOKIES_PATH, 'rb'))
   while True:
     try:
       front_availabilities, back_availabilities = get_front_and_back(driver)
