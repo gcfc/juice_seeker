@@ -151,26 +151,29 @@ def read_station(driver):
 def get_front_and_back(driver):
   logger.superinfo("Checking stations...")
   driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
-  while not any([el.text == "521407_4100 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
-    continue
-  back_spots = [el for el in driver.find_elements(
-      by=By.TAG_NAME, value="a") if el.text == "521407_4100 Bayside"][0]
-  back_spots.click()
-  while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
-    continue
+  try:
+    while not any([el.text == "521407_4100 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
+      continue
+    back_spots = [el for el in driver.find_elements(
+        by=By.TAG_NAME, value="a") if el.text == "521407_4100 Bayside"][0]
+    back_spots.click()
+    while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
+      continue
 
-  back_availabilities = read_station(driver)
-  logger.info(f"Looked at the back")
-  logger.info(json.dumps(back_availabilities, indent=2))
+    back_availabilities = read_station(driver)
+    logger.info(f"Looked at the back")
+    logger.info(json.dumps(back_availabilities, indent=2))
 
-  driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
-  while not any([el.text == "521412_4000 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
-    continue
-  back_spots = [el for el in driver.find_elements(
-      by=By.TAG_NAME, value="a") if el.text == "521412_4000 Bayside"][0]
-  back_spots.click()
-  while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
-    continue
+    driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
+    while not any([el.text == "521412_4000 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
+      continue
+    back_spots = [el for el in driver.find_elements(
+        by=By.TAG_NAME, value="a") if el.text == "521412_4000 Bayside"][0]
+    back_spots.click()
+    while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
+      continue
+  except:
+    return None, None
 
   front_availabilities = read_station(driver)
   logger.info(f"Looked at the front")
@@ -235,6 +238,8 @@ if __name__ == '__main__':
   while True:
     try:
       front_availabilities, back_availabilities = get_front_and_back(driver)
+      if (front_availabilities, back_availabilities) == (None, None):
+        continue
       front_availabilities, back_availabilities = handle_excludes(
           front_availabilities, back_availabilities)
       back_total = sum(len(v) for v in back_availabilities.values())
