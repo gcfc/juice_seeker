@@ -229,7 +229,7 @@ def send_email():
   }
   if not DEBUG_MODE:
     result = mailjet.send.create(data=data)
-    logger.superinfo(f"Sent API Response: {json.dumps(result.json(), indent=2)}")
+    logger.info(f"Sent API Response: {json.dumps(result.json(), indent=2)}")
     if result.status_code == 200:
       logger.superinfo("Email sent successfully!")
 
