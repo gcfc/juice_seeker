@@ -116,9 +116,13 @@ def setup():
         audio_sent = True
     driver.switch_to.default_content()
 
-  # finding the login button
-  login = driver.find_element(
+  can_login = False
+
+  while not can_login:
+    # find the login button
+    login = driver.find_element(
       by=By.CLASS_NAME, value="green_btn_lg.customize-primary-bg.mat-button")
+    can_login = (login.get_attribute("disabled") != 'true')
 
   # clicking on the button
   login.click()
