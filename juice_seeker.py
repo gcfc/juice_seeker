@@ -18,7 +18,6 @@ pp = pprint.PrettyPrinter(indent=2)
 
 MANUAL_LOGIN = True
 DEBUG_MODE = False
-CLICK_DELAY = 5
 
 # These stations and ports don't work
 EXCLUDE_FRONT = [(52447, 2), (52957, 1), (52958, 1)]
@@ -181,13 +180,12 @@ def read_station(driver):
 
 def get_front_and_back(driver):
   logger.superinfo("Checking stations...")
-  driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
   try:
+    driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
     while not any([el.text == "521407_4100 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
       continue
     back_spots = [el for el in driver.find_elements(
         by=By.TAG_NAME, value="a") if el.text == "521407_4100 Bayside"][0]
-    time.sleep(CLICK_DELAY)
     back_spots.click()
     while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
       continue
@@ -195,14 +193,12 @@ def get_front_and_back(driver):
     back_availabilities = read_station(driver)
     logger.info("Looked at the back")
     logger.info(json.dumps(back_availabilities, indent=2))
-    time.sleep(CLICK_DELAY)
-    driver.back()
+    driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
     while not any([el.text == "521412_4000 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
       continue
     logger.info("Looking at the front")
     front_spots = [el for el in driver.find_elements(
         by=By.TAG_NAME, value="a") if el.text == "521412_4000 Bayside"][0]
-    time.sleep(CLICK_DELAY)
     front_spots.click()
     while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
       continue
