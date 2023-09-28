@@ -18,6 +18,7 @@ pp = pprint.PrettyPrinter(indent=2)
 
 MANUAL_LOGIN = True
 DEBUG_MODE = False
+CLICK_DELAY = 5 # seconds
 
 # These stations and ports don't work
 EXCLUDE_FRONT = [(52447, 2), (52957, 1), (52958, 1)]
@@ -81,8 +82,10 @@ def setup():
   logger.superinfo("Entering info...")
   email_txtbx = driver.find_element(value="mat-input-0")
   email_txtbx.send_keys(os.environ['GREENSHELL_USERNAME'])
+  time.sleep(CLICK_DELAY)
   pw_txtbx = driver.find_element(value="mat-input-1")
   pw_txtbx.send_keys(os.environ['GREENSHELL_PASSWORD'])
+  time.sleep(CLICK_DELAY)
   
   if not MANUAL_LOGIN:
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -151,6 +154,7 @@ def setup():
       can_login = (login.get_attribute("disabled") != 'true')
 
     # clicking on the button
+    time.sleep(CLICK_DELAY)
     login.click()
 
   logger.superinfo("Logging in...")
@@ -181,11 +185,13 @@ def read_station(driver):
 def get_front_and_back(driver):
   logger.superinfo("Checking stations...")
   try:
+    time.sleep(CLICK_DELAY)
     driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
     while not any([el.text == "521407_4100 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
       continue
     back_spots = [el for el in driver.find_elements(
         by=By.TAG_NAME, value="a") if el.text == "521407_4100 Bayside"][0]
+    time.sleep(CLICK_DELAY)
     back_spots.click()
     while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
       continue
@@ -193,12 +199,14 @@ def get_front_and_back(driver):
     back_availabilities = read_station(driver)
     logger.info("Looked at the back")
     logger.info(json.dumps(back_availabilities, indent=2))
+    time.sleep(CLICK_DELAY)
     driver.get('https://sky.shellrecharge.com/evowner/portal/manage-account/favorites')
     while not any([el.text == "521412_4000 Bayside" for el in driver.find_elements(by=By.TAG_NAME, value="a")]):
       continue
     logger.info("Looking at the front")
     front_spots = [el for el in driver.find_elements(
         by=By.TAG_NAME, value="a") if el.text == "521412_4000 Bayside"][0]
+    time.sleep(CLICK_DELAY)
     front_spots.click()
     while not driver.find_elements(by=By.CLASS_NAME, value="charger-detail-head"):
       continue
