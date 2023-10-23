@@ -82,10 +82,8 @@ def setup():
   logger.superinfo("Entering info...")
   email_txtbx = driver.find_element(value="mat-input-0")
   email_txtbx.send_keys(os.environ['GREENSHELL_USERNAME'])
-  time.sleep(CLICK_DELAY)
   pw_txtbx = driver.find_element(value="mat-input-1")
   pw_txtbx.send_keys(os.environ['GREENSHELL_PASSWORD'])
-  time.sleep(CLICK_DELAY)
   
   if not MANUAL_LOGIN:
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -238,6 +236,7 @@ def send_email():
   api_key = os.environ['API_KEY']
   api_secret = os.environ['API_SECRET']
   email_segments = []
+  email_segments.append(f"Charger found in the {' AND '.join(available_location)}!")
   email_segments.append(f"Front: {front_num_available}/{front_total}")
   email_segments.extend([f"{k}\t{v}" for k, v in front_availabilities.items()])
   email_segments.append(f"\nBack: {back_num_available}/{back_total}")
@@ -279,14 +278,20 @@ if __name__ == '__main__':
         continue
       front_availabilities, back_availabilities = handle_excludes(
           front_availabilities, back_availabilities)
+
+      available_location = []
       back_total = sum(len(v) for v in back_availabilities.values())
       back_num_available = sum(vv == 'Available' for v in back_availabilities.values()
                                for vv in v.values())
+      if back_num_available > 0:
+        available_location.append("BACK")
       front_total = sum(len(v) for v in front_availabilities.values())
       front_num_available = sum(vv == 'Available' for v in front_availabilities.values()
                                 for vv in v.values())
+      if front_num_available > 0:
+        available_location.append("FRONT")
 
-      if ((back_num_available > 0) or (front_num_available > 0)):
+      if available_location:
         send_email()
         break
 
