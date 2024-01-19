@@ -18,10 +18,11 @@ pp = pprint.PrettyPrinter(indent=2)
 
 MANUAL_LOGIN = True
 DEBUG_MODE = False
+CHANGE_MODE = True
 CLICK_DELAY = 5 # seconds
 
 # These stations and ports don't work
-EXCLUDE_FRONT = [(52447, 2), (52957, 1), (52958, 1)]
+EXCLUDE_FRONT = [(52957, 1), (52958, 1)]
 EXCLUDE_BACK = []
 
 LOGGING_SUPERINFO_LEVEL = logging.INFO + 5
@@ -271,6 +272,7 @@ def send_email():
 
 if __name__ == '__main__':
   driver = setup()
+  front_availabilities_prev, back_availabilities_prev = None, None
   while True:
     try:
       front_availabilities, back_availabilities = get_front_and_back(driver)
@@ -280,20 +282,38 @@ if __name__ == '__main__':
           front_availabilities, back_availabilities)
 
       available_location = []
-      back_total = sum(len(v) for v in back_availabilities.values())
-      back_num_available = sum(vv == 'Available' for v in back_availabilities.values()
-                               for vv in v.values())
-      if back_num_available > 0:
-        available_location.append("BACK")
       front_total = sum(len(v) for v in front_availabilities.values())
       front_num_available = sum(vv == 'Available' for v in front_availabilities.values()
                                 for vv in v.values())
       if front_num_available > 0:
         available_location.append("FRONT")
+      back_total = sum(len(v) for v in back_availabilities.values())
+      back_num_available = sum(vv == 'Available' for v in back_availabilities.values()
+                               for vv in v.values())
+      if back_num_available > 0:
+        available_location.append("BACK")
 
-      if available_location:
-        send_email()
-        break
+      if back_availabilities_prev is None and front_availabilities_prev is None:
+        front_availabilities_prev, back_availabilities_prev = front_availabilities, back_availabilities
+      
+      if CHANGE_MODE:
+        will_send_email = False
+        if front_availabilities_prev != front_availabilities or back_availabilities_prev != back_availabilities:
+          for station, ports in front_availabilities.items():
+            if any(ports[port] == "Available" and front_availabilities_prev[station][port] != "Available" for port in ports):
+              will_send_email  = True
+              break
+          for station, ports in back_availabilities.items():
+            if any(ports[port] == "Available" and back_availabilities_prev[station][port] != "Available" for port in ports):
+              will_send_email = True
+              break
+        if will_send_email:
+          send_email()
+          break
+      else:
+        if available_location:
+          send_email()
+          break
 
     except KeyboardInterrupt:
       logger.error("Interrupted! Exiting...")
