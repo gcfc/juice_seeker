@@ -281,36 +281,39 @@ if __name__ == '__main__':
       front_availabilities, back_availabilities = handle_excludes(
           front_availabilities, back_availabilities)
 
-      available_location = []
       front_total = sum(len(v) for v in front_availabilities.values())
       front_num_available = sum(vv == 'Available' for v in front_availabilities.values()
                                 for vv in v.values())
-      if front_num_available > 0:
-        available_location.append("FRONT")
+      
       back_total = sum(len(v) for v in back_availabilities.values())
       back_num_available = sum(vv == 'Available' for v in back_availabilities.values()
                                for vv in v.values())
-      if back_num_available > 0:
-        available_location.append("BACK")
 
       if back_availabilities_prev is None and front_availabilities_prev is None:
         front_availabilities_prev, back_availabilities_prev = front_availabilities, back_availabilities
       
+      available_location = []
       if CHANGE_MODE:
         will_send_email = False
         if front_availabilities_prev != front_availabilities or back_availabilities_prev != back_availabilities:
           for station, ports in front_availabilities.items():
             if any(ports[port] == "Available" and front_availabilities_prev[station][port] != "Available" for port in ports):
-              will_send_email  = True
+              available_location.append("FRONT")
+              will_send_email = True
               break
           for station, ports in back_availabilities.items():
             if any(ports[port] == "Available" and back_availabilities_prev[station][port] != "Available" for port in ports):
+              available_location.append("BACK")
               will_send_email = True
               break
         if will_send_email:
           send_email()
           break
       else:
+        if front_num_available > 0:
+          available_location.append("FRONT")
+        if back_num_available > 0:
+          available_location.append("BACK")
         if available_location:
           send_email()
           break
