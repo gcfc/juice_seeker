@@ -6,6 +6,7 @@ from mailjet_rest import Client
 from dotenv import load_dotenv
 load_dotenv()
 
+EXIT_WHEN_FOUND = False
 DEBUG_MODE = False
 CHANGE_MODE = True
 # These stations and ports don't work
@@ -34,21 +35,29 @@ LOCATION_TO_ID = {"T1": 1944, "T2": 1902}
 
 def get_juice():
   availabilities = dict()
+  received_locations = []
   for location, location_id in LOCATION_TO_ID.items():
     location_availabilities = availabilities.setdefault(location, dict())
     response = requests.get(URL_TEMPLATE.format(location_id=location_id))
     if response.status_code != 200:
-        raise ConnectionError(f"Status code not success.")
+        raise ConnectionError("Status code not success.")
 
     response_data = response.json()
 
     if response_data["status"] != "SUCCESS":
-        raise RuntimeError(f"Failed to get charger status for {location}: {response_data['message']}")
+        logger.info(f"Failed to get charger status for {location}: {response_data['message']}")
+        continue
     
     for station in response_data["data"]["evses"]:
         location_availabilities.setdefault(station["evseId"], dict())
         for port in station["ports"]:
             location_availabilities[station["evseId"]][port['portName']] = port["portStatus"]
+    received_locations.append(location)
+  if not received_locations:
+    info_print = "Seeking juice..."
+  else:
+    info_print = "Seeking juice from " + " and ".join(received_locations) + "..."
+  logger.superinfo(info_print)
   return availabilities
 
 def handle_excludes(availabilities):
@@ -68,9 +77,9 @@ def send_email():
   api_secret = os.environ['API_SECRET']
   email_segments = []
   email_segments.append(f"Charger found in {' AND '.join(available_location)}!")
-  email_segments.append(f"T1:")
+  email_segments.append("T1:")
   email_segments.extend([f"{k}\t{v}" for k, v in availabilities["T1"].items()])
-  email_segments.append(f"\nT2:")
+  email_segments.append("\nT2:")
   email_segments.extend([f"{k}\t{v}" for k, v in availabilities["T2"].items()])
   email_text = "\n".join(email_segments)
   logger.superinfo(email_text)
@@ -102,26 +111,28 @@ def send_email():
       logger.superinfo("Email sent successfully!")
 
 if __name__ == '__main__':
-  prev_availabilities = None
+  prev_availabilities = {loc : dict() for loc in LOCATION_TO_ID}
   while True:
     try:
-      logger.superinfo("Seeking juice...")
       availabilities = get_juice()
       availabilities = handle_excludes(availabilities)
 
       logger.info(json.dumps(availabilities, indent=2))
 
-      if prev_availabilities is None:
-        prev_availabilities = availabilities
+      # Initialize prev_availabilities if haven't
+      for location, location_avail in availabilities.items():
+        if prev_availabilities[location] == dict() and availabilities[location] != dict():
+          prev_availabilities[location] = availabilities[location]
+        logger.info(json.dumps(prev_availabilities[location], indent=2))
       
       available_location = []
       
       if CHANGE_MODE:
         will_send_email = False
-        if prev_availabilities != availabilities:
-          for location, location_avail in availabilities.items():
+        for location, location_avail in availabilities.items():
+          if prev_availabilities[location] != availabilities[location] and availabilities[location] != dict():
             for station, ports in location_avail.items():
-              if any(((ports[port] == "AVAILABLE" and prev_availabilities[location][station][port] != "AVAILABLE") for port in ports)):
+              if any(((ports[port] == "AVAILABLE" and prev_availabilities[location][station][port] == "BUSY") for port in ports)):
                 available_location.append(location)
                 will_send_email = True
                 break
@@ -129,7 +140,8 @@ if __name__ == '__main__':
         if will_send_email:
           logger.info("Sending email...")
           send_email()
-          break
+          if EXIT_WHEN_FOUND:
+            break
       
       else:
         for location, location_avail in availabilities.items():
@@ -137,14 +149,20 @@ if __name__ == '__main__':
             available_location.append(location)
         if available_location:
           send_email()
-          break
-
+          if EXIT_WHEN_FOUND:
+            break
+      
+      # Save info
+      for location, location_avail in availabilities.items():
+        prev_availabilities[location] = availabilities[location]
+        logger.info(json.dumps(prev_availabilities[location], indent=2))
+    
     except KeyboardInterrupt:
       logger.error("Interrupted! Exiting...")
       break
 
     except Exception as e:
-      print(e)
+      logger.error(e)
       continue
 
   logger.superinfo("Have a wonderful day!")
