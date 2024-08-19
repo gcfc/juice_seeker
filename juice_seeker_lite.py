@@ -2,13 +2,13 @@ import requests
 import logging
 import os
 import json
+import time
 from mailjet_rest import Client
 from dotenv import load_dotenv
 load_dotenv()
 
 EXIT_WHEN_FOUND = False
 DEBUG_MODE = False
-CHANGE_MODE = True
 # These stations and ports don't work
 EXCLUDED_STATIONS_AND_PORTS = [(52957, 1), (52958, 1)]
 
@@ -110,6 +110,16 @@ def send_email():
     if result.status_code == 200:
       logger.superinfo("Email sent successfully!")
 
+def send_mac_notification():
+  title = f"{' and '.join(available_location)} Charger Found! {time.strftime("%H:%M:%S")}"
+  text = "GO GO GO!"
+  
+  os.system('afplay /Users/gechen/Downloads/knock_brush.mp3')
+  os.system('afplay /Users/gechen/Downloads/knock_brush.mp3')
+  os.system("""
+            osascript -e 'display notification "{}" with title "{}"'
+            """.format(text, title))
+
 if __name__ == '__main__':
   prev_availabilities = {loc : dict() for loc in LOCATION_TO_ID}
   while True:
@@ -123,38 +133,30 @@ if __name__ == '__main__':
       for location, location_avail in availabilities.items():
         if prev_availabilities[location] == dict() and availabilities[location] != dict():
           prev_availabilities[location] = availabilities[location]
-        logger.info(json.dumps(prev_availabilities[location], indent=2))
+          logger.superinfo(json.dumps(prev_availabilities[location], indent=2))
       
       available_location = []
       
-      if CHANGE_MODE:
-        will_send_email = False
-        for location, location_avail in availabilities.items():
-          if prev_availabilities[location] != availabilities[location] and availabilities[location] != dict():
-            for station, ports in location_avail.items():
-              if any(((ports[port] == "AVAILABLE" and prev_availabilities[location][station][port] == "BUSY") for port in ports)):
-                available_location.append(location)
-                will_send_email = True
-                break
-        
-        if will_send_email:
-          logger.info("Sending email...")
-          send_email()
-          if EXIT_WHEN_FOUND:
-            break
+      will_send_email = False
+      for location, location_avail in availabilities.items():
+        if prev_availabilities[location] != availabilities[location] and availabilities[location] != dict():
+          for station, ports in location_avail.items():
+            if any(((ports[port] == "AVAILABLE" and prev_availabilities[location][station][port] == "BUSY") for port in ports)):
+              available_location.append(location)
+              will_send_email = True
+              break
       
-      else:
-        for location, location_avail in availabilities.items():
-          if location_avail["num_available"] > 0:
-            available_location.append(location)
-        if available_location:
-          send_email()
-          if EXIT_WHEN_FOUND:
-            break
+      if will_send_email:
+        logger.info("Sending email...")
+        send_email()
+        send_mac_notification()
+        if EXIT_WHEN_FOUND:
+          break
       
       # Save info
       for location, location_avail in availabilities.items():
-        prev_availabilities[location] = availabilities[location]
+        if prev_availabilities[location] != dict() and availabilities[location] != dict():
+          prev_availabilities[location] = availabilities[location]
         logger.info(json.dumps(prev_availabilities[location], indent=2))
     
     except KeyboardInterrupt:
@@ -166,3 +168,4 @@ if __name__ == '__main__':
       continue
 
   logger.superinfo("Have a wonderful day!")
+  quit()
